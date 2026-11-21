@@ -39,3 +39,16 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# QA screenshots and harness artifacts
+.qa/
+
+# Built APKs (shared by hand, never committed)
+*.apk
+
+# throwaway QA logins
+qa/*.local.json
+
+# Firebase client config: holds a Google API key. Download it from the Firebase console
+# (project flatapp-ac786 -> Project settings -> Android app) into the project root to build.
+google-services.json

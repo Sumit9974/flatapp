@@ -1,8 +1,10 @@
+// Both background geofence tasks are defined at module load: Android can wake the app for an
+// enter/exit event with no screen mounted, so each task must exist before anything renders.
+import './src/geofence/task';
+import './src/presence/task';
 import { registerRootComponent } from 'expo';
-
 import App from './App';
+import { configureNotifications } from './src/notify';
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
+configureNotifications();
 registerRootComponent(App);

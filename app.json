@@ -2,22 +2,60 @@
   "expo": {
     "name": "FlatApp",
     "slug": "FlatApp",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "portrait",
+    "scheme": "flatapp",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.flatapp.app",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "POST_NOTIFICATIONS"
+      ]
     },
+    "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "FlatApp uses Face ID to unlock the app."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FlatApp uses your location to set the flat's home pin and check your distance from it.",
+          "locationAlwaysAndWhenInUsePermission": "FlatApp checks whether you are inside the circle around your flat, even when the app is closed. Only Home or Out is recorded.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ],
+      "expo-task-manager",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#2F5BEA",
+          "defaultChannel": "flat-updates"
+        }
+      ],
+      "expo-sqlite",
+      "./plugins/withLocalAndroidBuild"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
