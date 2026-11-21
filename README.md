@@ -1,9 +1,6 @@
 # FlatApp
 
-Android app for flatmates: bills paid or unpaid, today's dinner, who is home, group buys, flat info.
-Requirements: https://claude.ai/artifact/UXhEv6iWoUw4XXZt3nohuU
-Approved design (19 screens, side menu, 4 bottom tabs): https://claude.ai/artifact/YHX8KU28NfrqyahChRMc3W
-
+Android app for flatmates: bills paid or unpaid, today's dinner, who is home, group buys, flat info. 
 **Current state (2026-11-21):** the full app built to the approved design. Sign-in (email/password;
 Google once switched on in Supabase), fingerprint lock, flats (create, join by invite code,
 admin/member, several flats, delete), Home dashboard, Bills (month list, mark paid/unpaid with history,
