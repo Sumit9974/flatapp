@@ -37,6 +37,7 @@ const ICONS = {
   pushpin: ['m', 'pin-outline'],
   edit: ['f', 'edit-2'],
   fingerprint: ['m', 'fingerprint'],
+  lock: ['f', 'lock'],
   trash: ['f', 'trash-2'],
   userPlus: ['f', 'user-plus'],
   clock: ['f', 'clock'],

@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Tables } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
+import { stopPresence } from '../presence/sync';
 import { forgetThisPhone } from '../push/push';
 
 type Profile = Pick<Tables<'profiles'>, 'id' | 'display_name'>;
@@ -63,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const signOut = useCallback(async () => {
-    // Stop this phone getting the person's notifications; never let that block signing out.
+    // Stop this phone reporting Home/Out for the person and getting their notifications; never let
+    // either block signing out.
+    await stopPresence().catch(() => undefined);
     await forgetThisPhone().catch(() => undefined);
     await supabase.auth.signOut();
   }, []);

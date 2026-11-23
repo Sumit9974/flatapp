@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthProvider';
-import { Bar, Button, Card, Chip, Chips, Empty, Fab, Field, Grid, Hint, Notice, Pill, Screen, type } from '../components/ui';
+import { Bar, Button, Card, Chip, Chips, Empty, Fab, Field, Grid, Hint, LinkButton, Notice, Pill, Screen, type } from '../components/ui';
 import { BuyItem, loadBuy } from '../data/queries';
 import { useCurrentFlat, useFlats } from '../flats/FlatProvider';
 import { formatDay, parseAmount, rupees } from '../lib/format';
@@ -58,6 +58,21 @@ export function BuyScreen() {
       { text: 'Cancel item', style: 'destructive', onPress: () => void close(item, 'cancelled') },
     ]);
 
+  // Same rule as the server (close_buy, delete_buy): whoever proposed it, or an admin.
+  const isOwner = (item: BuyItem) => item.proposed_by === userId || role === 'admin';
+
+  // For mistakes: the item and its votes are removed. Bought and cancelled stay the normal endings.
+  const confirmDelete = (item: BuyItem) =>
+    Alert.alert(`Delete "${item.name}"?`, 'It and all its votes are removed for everyone. This cannot be undone.', [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          void supabase.rpc('delete_buy', { p_item: item.id }).then(({ error }) => (error ? Alert.alert('Could not delete it', error.message) : live.reload())),
+      },
+    ]);
+
   const inNames = (item: BuyItem) =>
     [...item.votes.entries()].filter(([, v]) => v).map(([id]) => (id === userId ? 'You' : nameOf(id)));
 
@@ -83,7 +98,7 @@ export function BuyScreen() {
               const ins = inNames(item);
               const outs = [...item.votes.values()].filter((v) => !v).length;
               const waiting = Math.max(0, memberCount - item.votes.size);
-              const canClose = item.proposed_by === userId || role === 'admin';
+              const canClose = isOwner(item);
               return (
                 <Card key={item.id}>
                   <View style={styles.between}>
@@ -132,10 +147,13 @@ export function BuyScreen() {
                         </Grid>
                       </>
                     ) : (
-                      <Grid columns={2} gap={8}>
-                        <Button label="Mark bought" size="sm" variant="secondary" onPress={() => setClosing(item.id)} />
-                        <Button label="Cancel item" size="sm" variant="dangerGhost" onPress={() => confirmCancel(item)} />
-                      </Grid>
+                      <>
+                        <Grid columns={2} gap={8}>
+                          <Button label="Mark bought" size="sm" variant="secondary" onPress={() => setClosing(item.id)} />
+                          <Button label="Cancel item" size="sm" variant="dangerGhost" onPress={() => confirmCancel(item)} />
+                        </Grid>
+                        <LinkButton label="Delete (added by mistake)" color={colors.bad} onPress={() => confirmDelete(item)} />
+                      </>
                     )
                   ) : null}
                 </Card>
@@ -165,6 +183,7 @@ export function BuyScreen() {
                       <Hint>{`${ins.length} in, ${[...item.votes.values()].filter((v) => !v).length} out.`}</Hint>
                     </>
                   )}
+                  {isOwner(item) ? <LinkButton label="Delete" color={colors.bad} onPress={() => confirmDelete(item)} /> : null}
                 </Card>
               );
             })}

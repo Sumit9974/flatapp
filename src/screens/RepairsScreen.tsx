@@ -1,8 +1,8 @@
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthProvider';
 import { Icon } from '../components/Icon';
-import { Button, Card, Empty, Fab, Hint, HStack, ListRow, Notice, Screen, type } from '../components/ui';
-import { loadRepairs } from '../data/queries';
+import { Button, Card, Empty, Fab, Hint, HStack, LinkButton, ListRow, Notice, Screen, type } from '../components/ui';
+import { loadRepairs, Repair } from '../data/queries';
 import { useCurrentFlat, useFlats } from '../flats/FlatProvider';
 import { formatWhen } from '../lib/format';
 import { supabase } from '../lib/supabase';
@@ -12,7 +12,7 @@ import { colors } from '../theme';
 
 export function RepairsScreen() {
   const { userId } = useAuth();
-  const { flat } = useCurrentFlat();
+  const { flat, role } = useCurrentFlat();
   const { nameOf } = useFlats();
   const { navigate } = useNav();
   const live = useLive(`repairs:${flat.id}`, () => loadRepairs(flat.id), [{ table: 'repairs', filter: `flat_id=eq.${flat.id}` }]);
@@ -25,6 +25,21 @@ export function RepairsScreen() {
     if (error) Alert.alert('Could not mark it', error.message);
     else await live.reload();
   };
+
+  // Same rule as the server (delete_repair): whoever reported it, or an admin.
+  const canDelete = (r: Repair) => r.reported_by === userId || role === 'admin';
+
+  // For mistakes; "Mark fixed" stays the normal ending.
+  const confirmDelete = (r: Repair) =>
+    Alert.alert(`Delete "${r.title}"?`, 'It is removed for everyone. This cannot be undone.', [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          void supabase.rpc('delete_repair', { p_repair: r.id }).then(({ error }) => (error ? Alert.alert('Could not delete it', error.message) : live.reload())),
+      },
+    ]);
 
   return (
     <View style={styles.flex}>
@@ -48,9 +63,10 @@ export function RepairsScreen() {
               </View>
             </HStack>
             {r.details ? <Text style={type.body}>{r.details}</Text> : null}
-            <View style={styles.start}>
+            <HStack gap={20}>
               <Button label="Mark fixed" icon="check" size="sm" variant="secondary" onPress={() => void fix(r.id)} />
-            </View>
+              {canDelete(r) ? <LinkButton label="Delete" color={colors.bad} onPress={() => confirmDelete(r)} /> : null}
+            </HStack>
           </Card>
         ))}
         {fixed.length > 0 ? (
@@ -66,6 +82,7 @@ export function RepairsScreen() {
                   iconColor={colors.good}
                   title={r.title}
                   subtitle={`Fixed by ${who(r.fixed_by)}${r.fixed_at ? `, ${formatWhen(r.fixed_at)}` : ''}`}
+                  accessory={canDelete(r) ? <LinkButton label="Delete" color={colors.bad} onPress={() => confirmDelete(r)} /> : undefined}
                 />
               ))}
             </Card>
@@ -82,5 +99,4 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   top: { alignItems: 'flex-start' },
   icon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  start: { alignItems: 'flex-start' },
 });

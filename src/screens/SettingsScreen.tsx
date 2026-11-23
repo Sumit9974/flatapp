@@ -160,6 +160,15 @@ export function SettingsScreen() {
             />
           }
         />
+        <ListRow
+          icon="lock"
+          iconBg={colors.primarySoft}
+          iconColor={colors.primary}
+          title="Change password"
+          subtitle="Set a new password for signing in with your email"
+          chevron
+          onPress={() => navigate({ name: 'changePassword' })}
+        />
       </Card>
 
       <Card title="Notify me about" list>

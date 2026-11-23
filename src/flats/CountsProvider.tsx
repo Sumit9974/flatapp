@@ -37,7 +37,9 @@ export function CountsProvider({ children }: { children: ReactNode }) {
       const month = toIsoDate(monthStart(new Date()));
       const now = new Date().toISOString();
       const [unpaidBills, openBuy, openPolls, openRepairs, unreadAlerts, homeNow] = await Promise.all([
-        count(supabase.from('bills').select('id', { count: 'exact', head: true }).eq('flat_id', flatId).eq('month', month).eq('status', 'unpaid')),
+        count(
+          supabase.from('bills').select('id', { count: 'exact', head: true }).eq('flat_id', flatId).eq('month', month).eq('status', 'unpaid').is('deleted_at', null),
+        ),
         count(supabase.from('buy_items').select('id', { count: 'exact', head: true }).eq('flat_id', flatId).eq('status', 'open')),
         count(
           supabase

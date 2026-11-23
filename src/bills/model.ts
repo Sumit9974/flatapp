@@ -32,6 +32,8 @@ export async function loadMonthBills(flatId: string, month: Date): Promise<Bill[
       .select('*')
       .eq('flat_id', flatId)
       .eq('month', toIsoDate(month))
+      // Deleted bills are kept (history, and so a recurring month is not re-created) but not listed.
+      .is('deleted_at', null)
       .order('due_date', { ascending: true, nullsFirst: false })
       .order('title'),
   );
@@ -99,6 +101,8 @@ export function describeHistory(entry: HistoryEntry, nameOf: (id: string | null)
       return { text: `${who} marked it paid`, when };
     case 'marked_unpaid':
       return { text: `${who} marked it unpaid${entry.reason ? `: ${entry.reason}` : ''}`, when };
+    case 'deleted':
+      return { text: `${who} deleted it${entry.reason ? `: ${entry.reason}` : ''}`, when };
     case 'created': {
       const details = entry.details;
       const recurring =

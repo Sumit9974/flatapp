@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Read the connected network's name (also needs location access, which the app already has). -->
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+  <!-- Be told when a Wi-Fi network becomes available, even while the app is closed. -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+</manifest>

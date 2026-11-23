@@ -21,6 +21,7 @@ export type Route =
   | { name: 'pollNew' }
   | { name: 'repairNew' }
   | { name: 'homePin' }
+  | { name: 'changePassword' }
   | { name: 'addFlat' }
   | { name: 'geofenceTest' };
 
@@ -64,6 +65,7 @@ export const TITLES: Record<RouteName, string> = {
   pollNew: 'Start a poll',
   repairNew: 'Report a repair',
   homePin: 'Home pin and radius',
+  changePassword: 'Change password',
   addFlat: 'Add a flat',
   geofenceTest: 'Geofence test',
 };

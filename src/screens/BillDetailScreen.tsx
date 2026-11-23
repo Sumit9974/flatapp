@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthProvider';
 import { amountText, Bill, describeHistory, HistoryEntry } from '../bills/model';
 import { Icon } from '../components/Icon';
 import { Button, Card, Field, Grid, Hint, HStack, LinkButton, Loading, Notice, Row, Screen, Stat, type } from '../components/ui';
 import { categoryStyle } from '../data/meta';
-import { useFlats } from '../flats/FlatProvider';
+import { useCurrentFlat, useFlats } from '../flats/FlatProvider';
 import { check, messageOf, unwrap, unwrapMaybe } from '../lib/errors';
 import { daysInMonth, formatDateTime, formatDay, formatMonthLong, fromIsoDate, parseAmount, toIsoDate } from '../lib/format';
 import { supabase } from '../lib/supabase';
@@ -21,12 +21,15 @@ interface Loaded {
 
 export function BillDetailScreen({ id }: { id: string }) {
   const { userId } = useAuth();
+  const { role } = useCurrentFlat();
   const { nameOf } = useFlats();
-  const { setTitleOverride } = useNav();
+  const { setTitleOverride, back } = useNav();
   const [notice, setNotice] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
-  const [busy, setBusy] = useState<'paid' | 'unpaid' | 'save' | null>(null);
+  const [busy, setBusy] = useState<'paid' | 'unpaid' | 'save' | 'delete' | null>(null);
   const [askReason, setAskReason] = useState(false);
   const [reason, setReason] = useState('');
+  const [askDeleteReason, setAskDeleteReason] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
   const [editing, setEditing] = useState(false);
   const [amountInput, setAmountInput] = useState('');
   const [dueInput, setDueInput] = useState('');
@@ -69,6 +72,10 @@ export function BillDetailScreen({ id }: { id: string }) {
   const month = fromIsoDate(bill.month);
   const todayIso = toIsoDate(new Date());
   const paid = bill.status === 'paid';
+  const deleted = bill.deleted_at !== null;
+  const deletion = deleted ? history.find((h) => h.action === 'deleted') : undefined;
+  // Same rule as the server (delete_bill): whoever added it, or an admin.
+  const canDelete = !deleted && (bill.created_by === userId || role === 'admin');
   const overdue = !paid && bill.due_date !== null && bill.due_date < todayIso;
   const dueText = bill.due_date ? `${formatDay(fromIsoDate(bill.due_date))} ${month.getFullYear()}` : 'No due date';
 
@@ -95,6 +102,41 @@ export function BillDetailScreen({ id }: { id: string }) {
     } finally {
       setBusy(null);
     }
+  };
+
+  // A deleted bill is hidden, not erased: its history stays, and a recurring month is not re-created.
+  const remove = async (why: string | null) => {
+    setBusy('delete');
+    setNotice(null);
+    try {
+      const { error } = await supabase.rpc('delete_bill', { p_bill: bill.id, p_reason: why ?? undefined });
+      if (error) throw error;
+      back();
+    } catch (e: unknown) {
+      setNotice({ text: messageOf(e), tone: 'error' });
+      setBusy(null);
+    }
+  };
+
+  // A paid bill needs a reason, like marking it unpaid does; an unpaid one just a confirmation.
+  const startDelete = () => {
+    if (paid) {
+      setDeleteReason('');
+      setAskDeleteReason(true);
+      return;
+    }
+    Alert.alert(`Delete ${bill.title}?`, 'It disappears from Bills for everyone. Its history is kept, and the flat is told.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => void remove(null) },
+    ]);
+  };
+
+  const confirmPaidDelete = () => {
+    if (deleteReason.trim().length === 0) {
+      setNotice({ text: 'Say why a paid bill is being deleted.', tone: 'error' });
+      return;
+    }
+    void remove(deleteReason.trim());
   };
 
   const startEdit = () => {
@@ -157,6 +199,17 @@ export function BillDetailScreen({ id }: { id: string }) {
         {bill.note ? <Hint>{bill.note}</Hint> : null}
       </Card>
 
+      {deleted ? (
+        <Card tone="bad">
+          <Text style={[styles.statusWord, { color: colors.bad }]}>Deleted</Text>
+          <Text style={type.body}>
+            {`Deleted by ${nameOf(bill.deleted_by)}, ${formatDateTime(new Date(bill.deleted_at ?? deletion?.at ?? ''))}.${deletion?.reason ? ` Reason: ${deletion.reason}` : ''}`}
+          </Text>
+          <Hint>{`It is no longer in Bills. ${paid ? `It had been marked paid by ${nameOf(bill.marked_by)}.` : 'It was unpaid.'}`}</Hint>
+        </Card>
+      ) : null}
+
+      {!deleted ? (
       <Card tone={paid ? 'good' : overdue ? 'bad' : 'warn'}>
         <View>
           <Text style={[styles.statusWord, { color: statusColor }]}>{paid ? 'Paid' : overdue ? 'Overdue' : 'Unpaid'}</Text>
@@ -187,7 +240,9 @@ export function BillDetailScreen({ id }: { id: string }) {
           <Button label="Mark unpaid" variant="secondary" onPress={() => setAskReason(true)} />
         )}
       </Card>
+      ) : null}
 
+      {!deleted ? (
       <Card title="Details" action={editing ? undefined : <LinkButton label="Edit" onPress={startEdit} />}>
         {editing ? (
           <>
@@ -210,11 +265,19 @@ export function BillDetailScreen({ id }: { id: string }) {
           </>
         )}
       </Card>
+      ) : null}
 
       <Card title="History">
         {history.map((h, i) => {
           const line = describeHistory(h, nameOf);
-          const dot = h.action === 'marked_paid' ? colors.good : h.action === 'marked_unpaid' ? colors.bad : h.action === 'edited' ? colors.primary : '#8A93A6';
+          const dot =
+            h.action === 'marked_paid'
+              ? colors.good
+              : h.action === 'marked_unpaid' || h.action === 'deleted'
+                ? colors.bad
+                : h.action === 'edited'
+                  ? colors.primary
+                  : '#8A93A6';
           return (
             <View key={h.id} style={[styles.tl, i === 0 && styles.tlFirst]}>
               <View style={[styles.tlDot, { backgroundColor: dot }]} />
@@ -227,6 +290,25 @@ export function BillDetailScreen({ id }: { id: string }) {
         })}
         <Text style={type.tiny}>History cannot be edited or deleted.</Text>
       </Card>
+
+      {canDelete && askDeleteReason ? (
+        <Card tone="danger">
+          <Field
+            label="Why delete a paid bill?"
+            value={deleteReason}
+            onChangeText={setDeleteReason}
+            maxLength={200}
+            placeholder="For example: added twice by mistake"
+          />
+          <Grid columns={2} gap={8}>
+            <Button label="Cancel" variant="secondary" onPress={() => setAskDeleteReason(false)} />
+            <Button label="Delete bill" variant="danger" onPress={confirmPaidDelete} busy={busy === 'delete'} />
+          </Grid>
+          <Hint>It disappears from Bills for everyone. Its history is kept, and the flat is told.</Hint>
+        </Card>
+      ) : canDelete ? (
+        <Button label="Delete bill" icon="trash" variant="dangerGhost" onPress={startDelete} busy={busy === 'delete'} />
+      ) : null}
     </Screen>
   );
 }

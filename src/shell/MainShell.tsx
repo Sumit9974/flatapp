@@ -1,16 +1,19 @@
 import { useEffect, useEffectEvent } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { useFlats } from '../flats/FlatProvider';
 import { useNav } from '../nav/NavProvider';
 import { Route, TOP_LEVEL } from '../nav/routes';
 import { ScreenFocus } from '../nav/ScreenFocus';
+import { flushPresence } from '../presence/report';
 import { pinsKey, syncPresenceGeofences } from '../presence/sync';
+import { reportWifiHome } from '../presence/wifi';
 import { enablePush, watchPushToken } from '../push/push';
 import { usePushOpen } from '../push/usePushOpen';
 import { AddBillScreen } from '../screens/AddBillScreen';
 import { BillDetailScreen } from '../screens/BillDetailScreen';
 import { BillsScreen } from '../screens/BillsScreen';
 import { BuyScreen } from '../screens/BuyScreen';
+import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
 import { DinnerScreen } from '../screens/DinnerScreen';
 import { FlatInfoEditScreen } from '../screens/FlatInfoEditScreen';
 import { FlatInfoScreen } from '../screens/FlatInfoScreen';
@@ -36,22 +39,40 @@ import { BottomTabs } from './BottomTabs';
 import { SideMenu } from './SideMenu';
 
 // Ask for notification permission once per app start, not again on every flat switch.
-const session = { askedForPush: false };
+const session = { askedForPush: false, presenceRefreshedAt: 0 };
+
+/** Coming back to the app re-checks Home/Out at most this often. */
+const PRESENCE_REFRESH_MS = 5 * 60_000;
 
 /** The signed-in app: header, the open screen, bottom tabs on top-level screens, and the side menu. */
 export function MainShell() {
   const { stack, current } = useNav();
   const { memberships } = useFlats();
 
-  // Keep the phone's Home/Out circles in step with the flats' pins. Runs on start and whenever a
-  // pin, radius or the list of flats changes; does nothing until background location is allowed.
+  // Keep the phone's Home/Out circles and Wi-Fi list in step with the flats and send any Home/Out a
+  // failed background call left waiting. Runs on start, whenever a pin, radius, Wi-Fi name or the
+  // list of flats changes, and when the app comes back to the front (at most every 5 minutes):
+  // re-registering the circles makes Android report Home/Out afresh, and being on the flat's Wi-Fi
+  // confirms Home. Does nothing until background location is allowed.
   const key = pinsKey(memberships);
-  const syncPins = useEffectEvent(() => {
-    syncPresenceGeofences(memberships).catch(() => undefined);
+  const syncPins = useEffectEvent((force: boolean) => {
+    const now = Date.now();
+    if (!force && now - session.presenceRefreshedAt < PRESENCE_REFRESH_MS) return;
+    session.presenceRefreshedAt = now;
+    flushPresence().catch(() => undefined);
+    syncPresenceGeofences(memberships)
+      .then(() => reportWifiHome())
+      .catch(() => undefined);
   });
   useEffect(() => {
-    syncPins();
+    syncPins(true);
   }, [key]);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncPins(false);
+    });
+    return () => sub.remove();
+  }, []);
 
   // Phone notifications: register this phone (asking once), keep its token current, and open the
   // right screen when one is tapped.
@@ -143,6 +164,8 @@ function RouteView({ route }: { route: Route }) {
       return <RepairNewScreen />;
     case 'homePin':
       return <HomePinScreen />;
+    case 'changePassword':
+      return <ChangePasswordScreen />;
     case 'addFlat':
       return <FlatSetupScreen onDone={back} />;
     case 'geofenceTest':

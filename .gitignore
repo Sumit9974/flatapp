@@ -40,6 +40,10 @@ yarn-error.*
 /ios
 /android
 
+# build output of local native modules (modules/*/android); their sources are committed
+modules/*/android/build/
+modules/*/android/.cxx/
+
 # QA screenshots and harness artifacts
 .qa/
 

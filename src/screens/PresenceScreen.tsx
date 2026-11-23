@@ -1,17 +1,20 @@
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthProvider';
 import { Icon } from '../components/Icon';
-import { Avatar, Between, Button, Card, Chip, Chips, Field, FieldLabel, Hint, HStack, Notice, Pill, Screen, Switch, type } from '../components/ui';
+import { getCurrentSsid } from '../../modules/flat-wifi';
+import { Avatar, Between, Button, Card, Chip, Chips, Field, FieldLabel, Hint, HStack, LinkButton, Notice, Pill, Screen, Switch, type } from '../components/ui';
 import { describePresence } from '../data/meta';
 import { loadPresence } from '../data/queries';
 import { useCurrentFlat, useFlats } from '../flats/FlatProvider';
 import { requestPermissions } from '../geofence/control';
+import { formatWhen } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import { useLive } from '../lib/useLive';
 import { useNav } from '../nav/NavProvider';
-import { syncPresenceGeofences } from '../presence/sync';
+import { STALE_AFTER_HOURS } from '../presence/config';
+import { checkinOverdueSince, syncPresenceGeofences } from '../presence/sync';
 import { colors } from '../theme';
 
 type Manual = 'none' | 'late' | 'away';
@@ -19,10 +22,13 @@ type Manual = 'none' | 'late' | 'away';
 export function PresenceScreen() {
   const { userId } = useAuth();
   const { flat, role } = useCurrentFlat();
-  const { members, memberships } = useFlats();
+  const { members, memberships, refresh } = useFlats();
   const { navigate } = useNav();
   const [bgGranted, setBgGranted] = useState<boolean | null>(null);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
+  // The network this phone is on now; read on open, on pull-to-refresh and after a change.
+  const [ssid, setSsid] = useState<string | null>(() => getCurrentSsid());
+  const [wifiBusy, setWifiBusy] = useState(false);
 
   const live = useLive(`presence:${flat.id}`, () => loadPresence(flat.id), [{ table: 'presence', filter: `flat_id=eq.${flat.id}` }]);
 
@@ -36,10 +42,58 @@ export function PresenceScreen() {
   const sharing = mineRow?.sharing ?? true;
   const note = noteDraft ?? mineRow?.manual_note ?? '';
   const hasPin = flat.home_lat !== null && flat.home_lng !== null;
+  const networks = flat.home_networks ?? [];
+  const onFlatWifi = ssid !== null && networks.includes(ssid);
   const others = members.filter((m) => m.leftAt === null && m.userId !== userId);
 
+  // The phone's own background check-in has been quiet for hours: almost always the battery saver.
+  const checkinQuietSince = bgGranted === true && (hasPin || networks.length > 0) && sharing ? checkinOverdueSince() : null;
+
+  const onRefresh = () => {
+    setSsid(getCurrentSsid());
+    return live.onRefresh();
+  };
+
+  // The flat's list is shared by everyone in it. Saving refreshes the flats, and the shell then
+  // re-syncs this phone (and confirms Home if it is on one of the networks).
+  const changeNetworks = async (action: 'add' | 'remove', name: string) => {
+    setWifiBusy(true);
+    const { error } = await supabase.rpc(action === 'add' ? 'add_home_network' : 'remove_home_network', { p_flat: flat.id, p_ssid: name });
+    setWifiBusy(false);
+    if (error) {
+      Alert.alert('Could not save', error.message);
+      return;
+    }
+    setSsid(getCurrentSsid());
+    await refresh();
+  };
+
+  const confirmRemove = (name: string) => {
+    Alert.alert(`Remove ${name}?`, 'Joining it will no longer mark anyone in the flat as Home.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => void changeNetworks('remove', name) },
+    ]);
+  };
+
+  const wifiHint =
+    ssid === null
+      ? "Connect to the flat's Wi-Fi to add it here. Location must be on for the phone to read the network's name."
+      : onFlatWifi
+        ? `You're on ${ssid}, one of the flat's networks.`
+        : `You're on ${ssid}. Add it if it is the flat's Wi-Fi.`;
+
   const headline =
-    me.state === 'home' ? "You're home" : me.state === 'out' ? "You're out" : me.state === 'away' ? "You're away" : me.state === 'hidden' ? 'Not sharing' : 'Not set up yet';
+    me.state === 'home'
+      ? "You're home"
+      : me.state === 'out'
+        ? "You're out"
+        : me.state === 'stale'
+          ? 'Not checked lately'
+          : me.state === 'away'
+            ? "You're away"
+            : me.state === 'hidden'
+              ? 'Not sharing'
+              : 'Not set up yet';
   const detail =
     me.state === 'hidden'
       ? 'Flatmates see "Not sharing"'
@@ -49,7 +103,7 @@ export function PresenceScreen() {
           : bgGranted === false
             ? 'Allow location so your phone can tell'
             : 'Your phone reports it the next time you cross the circle'
-        : `${me.detail}${me.state === 'home' || me.state === 'out' ? ', detected by your phone' : ''}`;
+        : `${me.detail}${me.state === 'home' || me.state === 'out' ? ', detected by your phone' : ''}${me.checked ? ` · ${me.checked}` : ''}`;
 
   const setManual = async (m: Manual, withNote: string | null) => {
     const { error } = await supabase.rpc('set_presence_status', {
@@ -78,7 +132,7 @@ export function PresenceScreen() {
   };
 
   return (
-    <Screen onRefresh={live.onRefresh} refreshing={live.refreshing}>
+    <Screen onRefresh={onRefresh} refreshing={live.refreshing}>
       {live.error ? <Notice message={live.error} tone="error" onDismiss={live.clearError} /> : null}
       <Card>
         <HStack>
@@ -92,6 +146,14 @@ export function PresenceScreen() {
           <Card tone="warn">
             <Text style={type.body}>Allow location “all the time” so your phone can share Home or Out by itself, even when the app is closed.</Text>
             <Button label="Allow location" icon="pin" onPress={() => void allowLocation()} />
+          </Card>
+        ) : null}
+        {checkinQuietSince ? (
+          <Card tone="warn">
+            <Text style={type.body}>
+              {`Your phone has not checked Home or Out in the background since ${formatWhen(checkinQuietSince.toISOString())}, so flatmates may see "Not sure". The battery saver is probably stopping FlatApp: open app settings, then Battery, and choose Unrestricted.`}
+            </Text>
+            <Button label="Open app settings" icon="gear" onPress={() => void Linking.openSettings()} />
           </Card>
         ) : null}
         {!hasPin ? (
@@ -136,7 +198,7 @@ export function PresenceScreen() {
               <Avatar id={m.userId} name={m.name} dot={p.dot} />
               <View style={styles.flex}>
                 <Text style={type.bodyStrong}>{m.name}</Text>
-                <Text style={type.small}>{p.detail}</Text>
+                <Text style={type.small}>{p.checked ? `${p.detail} · ${p.checked}` : p.detail}</Text>
               </View>
               <Pill text={p.short} bg={p.pillBg} fg={p.pillFg} />
             </View>
@@ -144,9 +206,31 @@ export function PresenceScreen() {
         })}
       </Card>
 
+      <Card title="Home Wi-Fi">
+        <Text style={type.small}>Joining one of these networks marks you Home straight away. Leaving is still detected by the circle.</Text>
+        {networks.length === 0 ? <Hint>No Wi-Fi added yet.</Hint> : null}
+        {networks.map((name) => (
+          <Between key={name}>
+            <HStack gap={8} style={styles.flex}>
+              <Icon name="wifi" size={18} color={name === ssid ? colors.good : colors.muted} />
+              <Text style={[type.body, styles.flex]} numberOfLines={1}>
+                {name}
+              </Text>
+            </HStack>
+            <LinkButton label="Remove" onPress={() => confirmRemove(name)} />
+          </Between>
+        ))}
+        {ssid !== null && !onFlatWifi ? (
+          <Button label={`This is our Wi-Fi: ${ssid}`} icon="wifi" variant="secondary" busy={wifiBusy} onPress={() => void changeNetworks('add', ssid)} />
+        ) : null}
+        <Hint>{wifiHint}</Hint>
+      </Card>
+
       <HStack gap={10} style={styles.top}>
         <Icon name="pin" size={18} color={colors.muted} />
-        <Text style={[type.small, styles.flex]}>{`Home means within ${flat.radius_m} m of the flat's pin. Your phone tells the app when you cross it, which can take a few minutes.`}</Text>
+        <Text style={[type.small, styles.flex]}>
+          {`Home means on the flat's Wi-Fi, or within ${flat.radius_m} m of the flat's pin for phones that do not use it. Your phone tells the app when you cross the circle, which can take a few minutes, and checks again about every 30 minutes. "Not sure" means a phone has been quiet for ${STALE_AFTER_HOURS} hours.`}
+        </Text>
       </HStack>
     </Screen>
   );

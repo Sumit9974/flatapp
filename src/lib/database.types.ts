@@ -176,6 +176,8 @@ export type Database = {
           category_id: string
           created_at: string
           created_by: string
+          deleted_at: string | null
+          deleted_by: string | null
           due_date: string | null
           flat_id: string
           id: string
@@ -192,6 +194,8 @@ export type Database = {
           category_id: string
           created_at?: string
           created_by?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           due_date?: string | null
           flat_id: string
           id?: string
@@ -208,6 +212,8 @@ export type Database = {
           category_id?: string
           created_at?: string
           created_by?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           due_date?: string | null
           flat_id?: string
           id?: string
@@ -566,6 +572,7 @@ export type Database = {
           created_by: string
           home_lat: number | null
           home_lng: number | null
+          home_networks: string[]
           id: string
           invite_code: string
           name: string
@@ -577,6 +584,7 @@ export type Database = {
           created_by: string
           home_lat?: number | null
           home_lng?: number | null
+          home_networks?: string[]
           id?: string
           invite_code: string
           name: string
@@ -588,6 +596,7 @@ export type Database = {
           created_by?: string
           home_lat?: number | null
           home_lng?: number | null
+          home_networks?: string[]
           id?: string
           invite_code?: string
           name?: string
@@ -833,6 +842,7 @@ export type Database = {
       }
       presence: {
         Row: {
+          checked_at: string | null
           flat_id: string
           manual: string | null
           manual_note: string | null
@@ -844,6 +854,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          checked_at?: string | null
           flat_id: string
           manual?: string | null
           manual_note?: string | null
@@ -855,6 +866,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          checked_at?: string | null
           flat_id?: string
           manual?: string | null
           manual_note?: string | null
@@ -963,6 +975,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_home_network: {
+        Args: { p_flat: string; p_ssid: string }
+        Returns: string[]
+      }
       close_buy: {
         Args: {
           p_final?: number
@@ -979,6 +995,7 @@ export type Database = {
           created_by: string
           home_lat: number | null
           home_lng: number | null
+          home_networks: string[]
           id: string
           invite_code: string
           name: string
@@ -1015,10 +1032,17 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      delete_bill: {
+        Args: { p_bill: string; p_reason?: string }
+        Returns: undefined
+      }
+      delete_buy: { Args: { p_item: string }; Returns: undefined }
       delete_flat: {
         Args: { p_confirm_name: string; p_flat: string }
         Returns: undefined
       }
+      delete_poll: { Args: { p_poll: string }; Returns: undefined }
+      delete_repair: { Args: { p_repair: string }; Returns: undefined }
       dinner_day: { Args: { p_flat: string }; Returns: string }
       display_name: { Args: { p_user: string }; Returns: string }
       fix_repair: { Args: { p_repair: string }; Returns: undefined }
@@ -1041,6 +1065,7 @@ export type Database = {
           created_by: string
           home_lat: number | null
           home_lng: number | null
+          home_networks: string[]
           id: string
           invite_code: string
           name: string
@@ -1062,6 +1087,8 @@ export type Database = {
           category_id: string
           created_at: string
           created_by: string
+          deleted_at: string | null
+          deleted_by: string | null
           due_date: string | null
           flat_id: string
           id: string
@@ -1144,6 +1171,10 @@ export type Database = {
         }
       }
       register_push_token: { Args: { p_token: string }; Returns: undefined }
+      remove_home_network: {
+        Args: { p_flat: string; p_ssid: string }
+        Returns: string[]
+      }
       remove_member: {
         Args: { p_flat: string; p_user: string }
         Returns: undefined
@@ -1153,7 +1184,7 @@ export type Database = {
         Returns: undefined
       }
       report_presence: {
-        Args: { p_flat: string; p_state: string }
+        Args: { p_at?: string; p_flat: string; p_state: string }
         Returns: undefined
       }
       report_repair: {
@@ -1231,6 +1262,7 @@ export type Database = {
           created_by: string
           home_lat: number | null
           home_lng: number | null
+          home_networks: string[]
           id: string
           invite_code: string
           name: string

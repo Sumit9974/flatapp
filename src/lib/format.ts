@@ -105,6 +105,16 @@ export function sinceText(iso: string, now: Date = new Date()): string {
   return `since ${formatDay(d)}`;
 }
 
+/** "5 min ago", "2 h ago", "1 day ago", "3 days ago" */
+export function agoText(iso: string, now: Date = new Date()): string {
+  const minutes = Math.max(0, Math.round((now.getTime() - new Date(iso).getTime()) / 60_000));
+  if (minutes < 60) return `${minutes}${NBSP}min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}${NBSP}h ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? '1 day ago' : `${days} days ago`;
+}
+
 /** "Good morning" / "Good afternoon" / "Good evening" */
 export function greeting(date: Date): string {
   const h = date.getHours();

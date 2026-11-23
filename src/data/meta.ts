@@ -1,5 +1,6 @@
 import type { IconName } from '../components/Icon';
-import { sinceText } from '../lib/format';
+import { agoText, formatWhen, sinceText } from '../lib/format';
+import { STALE_AFTER_HOURS } from '../presence/config';
 import { colors } from '../theme';
 import type { DinnerChoice, PresenceRow } from './queries';
 
@@ -51,16 +52,22 @@ export const UNDECIDED = { label: 'Not decided', bg: colors.warnSoft, fg: colors
 // ---------------------------------------------------------------- presence
 
 export interface PresenceView {
-  state: 'home' | 'out' | 'away' | 'hidden' | 'unknown';
+  /** 'stale': the phone last said Home or Out, but has not confirmed it for hours. */
+  state: 'home' | 'out' | 'stale' | 'away' | 'hidden' | 'unknown';
   short: string;
   detail: string;
+  /** "checked 2 h ago", once a phone has been quiet for over an hour; shown after the detail. */
+  checked?: string;
   dot: string;
   pillBg: string;
   pillFg: string;
   textColor: string;
 }
 
-export function describePresence(row: PresenceRow | undefined): PresenceView {
+const STALE_MS = STALE_AFTER_HOURS * 3_600_000;
+const SHOW_CHECKED_AFTER_MS = 60 * 60_000;
+
+export function describePresence(row: PresenceRow | undefined, now: Date = new Date()): PresenceView {
   if (row && !row.sharing) {
     return { state: 'hidden', short: 'Hidden', detail: 'Not sharing', dot: colors.switchOff, pillBg: colors.slateSoft, pillFg: colors.slate, textColor: colors.muted };
   }
@@ -75,23 +82,40 @@ export function describePresence(row: PresenceRow | undefined): PresenceView {
       textColor: colors.warn,
     };
   }
-  if (row?.state === 'home') {
-    return {
-      state: 'home',
-      short: 'Home',
-      detail: row.since ? `Home ${sinceText(row.since)}` : 'Home',
-      dot: colors.good,
-      pillBg: colors.goodSoft,
-      pillFg: colors.good,
-      textColor: colors.good,
-    };
-  }
-  if (row?.state === 'out') {
-    const late = row.manual === 'late' ? ` · coming late${row.manual_note ? `, ${row.manual_note}` : ''}` : '';
+  if (row?.state === 'home' || row?.state === 'out') {
+    const late = row.state === 'out' && row.manual === 'late' ? ` · coming late${row.manual_note ? `, ${row.manual_note}` : ''}` : '';
+    // Rows from before check-ins existed have no checked_at; their last update is the best guess.
+    const lastCheck = row.checked_at ?? row.updated_at;
+    const quietMs = now.getTime() - new Date(lastCheck).getTime();
+    if (quietMs > STALE_MS) {
+      return {
+        state: 'stale',
+        short: 'Not sure',
+        detail: `Last seen ${row.state} · ${formatWhen(lastCheck, now)}${late}`,
+        dot: '#C9CFDB',
+        pillBg: colors.warnSoft,
+        pillFg: colors.warn,
+        textColor: colors.muted,
+      };
+    }
+    const checked = quietMs > SHOW_CHECKED_AFTER_MS ? `checked ${agoText(lastCheck, now)}` : undefined;
+    if (row.state === 'home') {
+      return {
+        state: 'home',
+        short: 'Home',
+        detail: row.since ? `Home ${sinceText(row.since, now)}` : 'Home',
+        checked,
+        dot: colors.good,
+        pillBg: colors.goodSoft,
+        pillFg: colors.good,
+        textColor: colors.good,
+      };
+    }
     return {
       state: 'out',
       short: 'Out',
-      detail: `${row.since ? `Out ${sinceText(row.since)}` : 'Out'}${late}`,
+      detail: `${row.since ? `Out ${sinceText(row.since, now)}` : 'Out'}${late}`,
+      checked,
       dot: colors.switchOff,
       pillBg: colors.slateSoft,
       pillFg: colors.slate,

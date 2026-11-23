@@ -38,6 +38,18 @@ export function PollsScreen() {
       },
     ]);
 
+  // For mistakes: the poll and its votes are removed. Closing stays the normal ending.
+  const deletePoll = (p: Poll) =>
+    Alert.alert('Delete this poll?', 'The question and all its votes are removed for everyone. This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          void supabase.rpc('delete_poll', { p_poll: p.poll.id }).then(({ error }) => (error ? Alert.alert('Could not delete it', error.message) : live.reload())),
+      },
+    ]);
+
   const polls = live.data ?? [];
   const open = polls.filter((p) => p.isOpen);
   const closed = polls.filter((p) => !p.isOpen);
@@ -47,7 +59,9 @@ export function PollsScreen() {
     const mine = userId ? p.votes.get(userId) : undefined;
     const counts = new Map<string, number>();
     for (const o of p.votes.values()) counts.set(o, (counts.get(o) ?? 0) + 1);
-    const canClose = p.isOpen && (p.poll.created_by === userId || role === 'admin');
+    // Same rule as the server: whoever started it, or an admin.
+    const isOwner = p.poll.created_by === userId || role === 'admin';
+    const canClose = p.isOpen && isOwner;
     return (
       <Card key={p.poll.id}>
         <HStack gap={8}>
@@ -83,7 +97,12 @@ export function PollsScreen() {
           );
         })}
         <Hint>{p.isOpen ? `${mine ? 'You voted. Tap another answer to change it. ' : 'Tap an answer to vote. '}${total} of ${memberCount} have voted.` : `${total} voted.`}</Hint>
-        {canClose ? <LinkButton label="Close poll" onPress={() => closePoll(p)} /> : null}
+        {isOwner ? (
+          <HStack gap={20}>
+            {canClose ? <LinkButton label="Close poll" onPress={() => closePoll(p)} /> : null}
+            <LinkButton label="Delete poll" color={colors.bad} onPress={() => deletePoll(p)} />
+          </HStack>
+        ) : null}
       </Card>
     );
   };

@@ -54,6 +54,7 @@
         }
       ],
       "expo-sqlite",
+      "expo-background-task",
       "./plugins/withLocalAndroidBuild"
     ],
     "web": {
